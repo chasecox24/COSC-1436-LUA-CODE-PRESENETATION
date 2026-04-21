@@ -28,7 +28,7 @@ local function setAccessoriesByArmorSubtype: this loops through the character an
 
 game.Player.PlayerAdder: When a player joins our game, we go inside the data of that player, and then we give them the specific items based on a bool value called ReceivedStarterPack
 
-for_, uniqueItem in items: we are looping through the set of items and using datapaths to set the data for that specific person
+for_, uniqueItem in items: we are looping through the set of items and using datapaths module to set the data for that specific person
 
 InventoryEquipRemote.OnServerEvent: this happens when the client (player) tries to equip a piece of gear. It then goes to the server and gets validated, and then there is an else if statement correlating to what is going to happen. If it is a piece of gear, we generate a new weld and weld it to the corresponding armor subtype, and remove the accessories held within the map. ELSE if it is already equipt then it will unequip it, and then the accessories will be put back on. ELSE IF it is a tool, then it will equip the tool
 
