@@ -1,0 +1,215 @@
+game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
+
+local DataService = require(ReplicatedStorage:WaitForChild("Data"):WaitForChild("DataService")).client
+local DataPaths = require(ReplicatedStorage:WaitForChild("Data"):WaitForChild("DataPaths"))
+local DataTemplate = require(ReplicatedStorage:WaitForChild("Data"):WaitForChild("DataTemplate"))
+
+local Types = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Types"))
+
+local InventoryEquipRemote = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("InventoryEquip")
+
+local InventoryAction = script.Parent.Parent:WaitForChild("Inputs"):WaitForChild("GameContext"):WaitForChild("Inventory")
+local BagCapacity = 40
+local BagItemCount = 0
+
+local InventoryGUI = script.Parent
+local ArmorContainer = InventoryGUI:FindFirstChild("ArmorContainer", true)
+local ToolContainer = InventoryGUI:FindFirstChild("ToolContainer", true)
+local BagContainer = InventoryGUI:FindFirstChild("BagContainer", true)
+local InventorySlot = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("InventoryItemSlot")
+local InventoryEmptySlot = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("InventoryEmptySlot")
+
+DataService:waitForData()
+
+InventoryAction.Pressed:Connect(function()
+	InventoryGUI.Enabled = not InventoryGUI.Enabled --flip flops
+end)
+
+local function removeEmptyBagSlot()
+	local destroyed = BagContainer:FindFirstChild("Empty")
+	
+	if destroyed ~= nil then
+		destroyed:Destroy()
+	end
+end
+
+local function createEmptyBagSlot()
+	local slotFrame = InventoryEmptySlot:Clone()
+	slotFrame.Parent = BagContainer
+	slotFrame.Name = "Empty"
+	slotFrame.LayoutOrder = 1
+end
+
+local function createStackableBagSlot(itemName: string, amount: number)
+	local slotFrame = InventorySlot:Clone()
+	slotFrame.Parent = BagContainer
+	slotFrame.Name = itemName
+	slotFrame.LayoutOrder = -1
+
+	local container = slotFrame.Container
+	container.NameLabel.Text = itemName
+	container.Quantity.QuantityLabel.Text = "x"..amount
+	
+	BagItemCount += 1
+
+	removeEmptyBagSlot()
+end
+
+local function createUniqueBagSlot(UID: string)
+	local uniqueItem: DataTemplate.UniqueItem = DataService:get(DataPaths.UniqueItems / UID)
+	
+	local slotFrame = InventorySlot:Clone()
+	slotFrame.Parent = BagContainer
+	slotFrame.Name = UID
+	slotFrame.LayoutOrder = -1
+
+	local container = slotFrame.Container
+	container.NameLabel.Text = uniqueItem.Id
+	
+	container.Quantity.Visible = false
+
+	BagItemCount += 1
+	
+	removeEmptyBagSlot()
+	
+	container.Activated:Connect(function()
+		InventoryEquipRemote:FireServer(UID)
+	end)
+end
+
+local function setEquippedUniqueItem(parentContainer: Frame, subType: string, UID: string?, oldUID: string?)
+	local subTypeContainer = assert(parentContainer:FindFirstChild(subType))
+	local uniqueItem: DataTemplate.UniqueItem = DataService:get(DataPaths.UniqueItems / UID)
+	
+	if oldUID ~= nil then
+		local oldSlotFrame = subTypeContainer:FindFirstChild(oldUID)
+
+		if oldSlotFrame ~= nil then
+			oldSlotFrame:Destroy()
+		end
+
+		createUniqueBagSlot(oldUID)
+	end
+	
+	if UID ~= nil then
+		local slotFrame = InventorySlot:Clone()
+		slotFrame.Parent = subTypeContainer
+		slotFrame.Name = UID
+		
+		local container = slotFrame.Container
+		container.NameLabel.Text = uniqueItem.Id
+
+		container.Quantity.Visible = false
+		
+		container.Activated:Connect(function()
+			InventoryEquipRemote:FireServer(UID)
+		end)
+		
+		local bagSlotFrame = BagContainer:FindFirstChild(UID)
+
+		if bagSlotFrame ~= nil then
+			bagSlotFrame:Destroy()
+			
+			createEmptyBagSlot()
+		end
+	end
+end
+
+local function setToolSlot(toolType: string, UID: string, oldUID: string?)
+	local toolTypeContainer = assert(ToolContainer:FindFirstChild(toolType))
+	local uniqueItem: DataTemplate.UniqueItem = DataService:get(DataPaths.UniqueItems / UID)
+	
+	-- put old tool back inside bag
+	if oldUID ~= nil then
+		-- remove old tool
+		local oldSlotFrame = toolTypeContainer:FindFirstChild(oldUID)
+
+		if oldSlotFrame ~= nil then
+			oldSlotFrame:Destroy()
+		end
+		
+		createUniqueBagSlot(oldUID)
+	end
+
+	-- create new tool inside equippedTool
+	local slotFrame = InventorySlot:Clone()
+	slotFrame.Parent = toolTypeContainer
+	slotFrame.Name = UID
+
+	local container = slotFrame.Container
+	container.NameLabel.Text = uniqueItem.Id
+	
+	container.Quantity.Visible = false
+end
+
+--local function createBagSlotOld(itemName, amount, frameTemplate)
+--	local slotFrame = frameTemplate:Clone()
+--	slotFrame.Parent = BagContainer
+--	slotFrame.Name = itemName or "Empty"
+
+--	local container = slotFrame.Container
+--	container.Size = UDim2.new(1, -5, 1, -5)
+
+--	if itemName ~= nil then
+--		container.NameLabel.Text = itemName
+--		container.Quantity.QuantityLabel.Text = "x"..amount
+--	end
+--end
+DataService:getIndexChangedSignal(DataPaths.Equipped / Types.ItemType.Armor):Connect(function(armorType: Types.ArmorSubType, UID: string?, oldUID: string?)
+	setEquippedUniqueItem(ArmorContainer, armorType, UID, oldUID)	
+end)
+
+DataService:getIndexChangedSignal(DataPaths.Stackables):Connect(function(itemName, currentValue: number?)
+	local slotFrame = BagContainer:FindFirstChild(itemName) :: typeof(InventorySlot)
+	
+	if slotFrame == nil then
+		createStackableBagSlot(itemName, currentValue)
+	else
+		if currentValue ~= nil then
+			slotFrame.Container.Quantity.QuantityLabel.Text = "x"..currentValue
+		else
+			slotFrame:Destroy()
+
+			createEmptyBagSlot()
+		end
+	end
+end)
+
+DataService:getIndexChangedSignal(DataPaths.UniqueItems):Connect(function(UID: string, UniqueItem: DataTemplate.UniqueItem?)
+	-- get the slot
+	local slotFrame = BagContainer:FindFirstChild(UID) :: typeof(InventorySlot)
+	-- check if nil
+	if slotFrame == nil then
+		createUniqueBagSlot(UID)
+	else
+		if UniqueItem == nil then
+			slotFrame:Destroy()
+			
+			createEmptyBagSlot()
+		else
+			error("what the flip")
+		end
+	end
+end)
+
+DataService:getIndexChangedSignal(DataPaths.Equipped / Types.ItemType.Tools):Connect(function(toolType: string, UID: string, oldUID: string?)
+	setEquippedUniqueItem(ToolContainer, toolType, UID, oldUID)
+end)
+
+-- create the empty slots
+for i = 1, BagCapacity do
+	createEmptyBagSlot()
+end
+
+-- load the stackables
+for itemName: string, amount: number in DataService:get(DataPaths.Stackables) do
+	createStackableBagSlot(itemName, amount)
+end
+
+-- load the unique items
+for UID: string, UniqueItem: DataTemplate.UniqueItem in DataService:get(DataPaths.UniqueItems) do
+	createUniqueBagSlot(UniqueItem.Id, UniqueItem.UID)
+end
