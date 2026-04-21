@@ -1,0 +1,161 @@
+--!strict
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+
+local DataService = require(ReplicatedStorage.Data.DataService).server
+local DataTemplate = require(ReplicatedStorage.Data.DataTemplate)
+local DataPaths = require(ReplicatedStorage.Data.DataPaths)
+
+local Types = require(ReplicatedStorage.Modules.Types)
+
+local ItemConfig = require(ReplicatedStorage.Configs.ItemConfig)
+
+local InventoryEquipRemote = ReplicatedStorage.Remote.InventoryEquip
+
+type Character = Model & {
+	Armor: Folder
+} -- what is this is
+
+local ArmorRemovalMap: {[Types.ArmorSubType]: {Enum.AccessoryType} } = {
+	Head = {
+		Enum.AccessoryType.Hat,
+		Enum.AccessoryType.Hair,
+		Enum.AccessoryType.Face,
+		Enum.AccessoryType.Eyebrow,
+		Enum.AccessoryType.Eyelash
+	},
+
+	Torso = {
+		Enum.AccessoryType.Shirt,
+		Enum.AccessoryType.Jacket,
+		Enum.AccessoryType.Sweater,
+		Enum.AccessoryType.TShirt,
+		Enum.AccessoryType.Front,
+		Enum.AccessoryType.Back
+	},
+
+	["Left Arm"] = {
+		Enum.AccessoryType.Shoulder
+	},
+
+	["Right Arm"] = {
+		Enum.AccessoryType.Shoulder
+	},
+
+	["Left Leg"] = {
+		Enum.AccessoryType.Pants,
+		Enum.AccessoryType.Shorts,
+		Enum.AccessoryType.LeftShoe,
+		Enum.AccessoryType.DressSkirt,
+		Enum.AccessoryType.Waist
+	},
+
+	["Right Leg"] = {
+		Enum.AccessoryType.Pants,
+		Enum.AccessoryType.Shorts,
+		Enum.AccessoryType.RightShoe,
+		Enum.AccessoryType.DressSkirt,
+		Enum.AccessoryType.Waist
+	}
+}
+
+local function setAccessoriesByArmorSubtype(player : Player, armorType: Types.ArmorSubType, visible: boolean)
+	local character = player.Character
+	if character == nil then return end
+	
+	local accessoryTypesToToggle = ArmorRemovalMap[armorType]
+
+	for i, child in character:GetChildren() do
+		if child:IsA("Accessory") and table.find(accessoryTypesToToggle, child.AccessoryType) then
+			local accessoryHandle = child:FindFirstChild("Handle") :: BasePart
+			
+			if visible == true then
+				accessoryHandle.Transparency = 0
+			else
+				accessoryHandle.Transparency = 1
+			end
+		end
+	end
+end
+
+game.Players.PlayerAdded:Connect(function(Player)
+	DataService:waitForData(Player)
+
+	-- check if ReceivedStarterPack is false
+	if DataService:get(Player, DataPaths.ReceivedStarterPack) == false then
+		local items = {
+			{Id = "Bronze Pickaxe", UID = HttpService:GenerateGUID(false), Bonuses = {}},
+			{Id = "Bronze Axe", UID = HttpService:GenerateGUID(false), Bonuses = {}},
+			{Id = "Bronze Sword", UID = HttpService:GenerateGUID(false), Bonuses = {}},
+			{Id = "Iron Pickaxe", UID = HttpService:GenerateGUID(false), Bonuses = {}},
+			{Id = "Iron Axe", UID = HttpService:GenerateGUID(false), Bonuses = {}},
+			{Id = "Iron Sword", UID = HttpService:GenerateGUID(false), Bonuses = {}},
+			{Id = "Iron Helmet", UID = HttpService:GenerateGUID(false), Bonuses = {}};
+			{Id = "Iron Chestplate", UID = HttpService:GenerateGUID(false), Bonuses = {}};
+			{Id = "Iron Left Leg Plate", UID = HttpService:GenerateGUID(false), Bonuses = {}};
+			{Id = "Iron Left Shoulder Plate", UID = HttpService:GenerateGUID(false), Bonuses = {}};
+		}
+
+		for _, uniqueItem in items do
+			DataService:set(Player, DataPaths.UniqueItems / uniqueItem.UID, uniqueItem)
+		end
+		
+		DataService:set(Player, DataPaths.Stackables / "Bronze Ore", 10)
+		DataService:set(Player, DataPaths.Stackables / "Oak Log", 10)
+
+		DataService:set(Player, DataPaths.Equipped / Types.ItemType.Tools / Types.ToolSubType.Pickaxe, items[1].UID)
+		DataService:set(Player, DataPaths.Equipped / Types.ItemType.Tools / Types.ToolSubType.Axe, items[2].UID)
+		DataService:set(Player, DataPaths.Equipped / Types.ItemType.Tools / Types.ToolSubType.Sword, items[3].UID)
+	end
+
+	print(DataService:get(Player))
+end)
+
+InventoryEquipRemote.OnServerEvent:Connect(function(player: Player, UID: string | unknown)
+	local character = player.Character :: Character
+
+	if not character then return end
+	
+	if type(UID) ~= "string" then return end
+	
+	local uniqueItem: DataTemplate.UniqueItem? = DataService:get(player, DataPaths.UniqueItems / UID)
+	
+	if uniqueItem == nil then return end
+
+	local itemConfig = ItemConfig[uniqueItem.Id]
+	
+	local equippedItemPath = DataPaths.Equipped / itemConfig.type / itemConfig.subType
+	local currentlyEquippedItemUID: string? = DataService:get(player, equippedItemPath)
+
+	if itemConfig.type == Types.ItemType.Armor then
+		if currentlyEquippedItemUID == nil or currentlyEquippedItemUID ~= uniqueItem.UID then
+			DataService:set(player, equippedItemPath, uniqueItem.UID) -- clicking armor piece and equpping it
+			
+			-- attach armor model
+			local armorModel = itemConfig.instance:Clone() :: Model
+			armorModel.Parent = character:FindFirstChild("Armor") :: Folder
+			armorModel.Name = itemConfig.subType
+			
+			local weld = Instance.new("Weld")
+			weld.Parent = armorModel
+			weld.Part0 = character:FindFirstChild(itemConfig.subType) :: Part 
+			weld.Part1 = armorModel.PrimaryPart
+			
+			setAccessoriesByArmorSubtype(player, itemConfig.subType :: Types.ArmorSubType, false)
+		else
+			-- Clicking armor piece when you have it already equipped
+			
+			DataService:set(player, equippedItemPath, nil) -- Unequip it
+			
+			local armorModel = character.Armor:FindFirstChild(itemConfig.subType) :: Model
+			armorModel:Destroy()
+			
+			setAccessoriesByArmorSubtype(player, itemConfig.subType :: Types.ArmorSubType, true)
+		end
+	elseif itemConfig.type == Types.ItemType.Tools then
+		if currentlyEquippedItemUID == nil or currentlyEquippedItemUID ~= uniqueItem.UID then
+			DataService:set(player, DataPaths.Equipped / itemConfig.type / itemConfig.subType, uniqueItem.UID)
+		end
+	end
+end)
