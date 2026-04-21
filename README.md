@@ -21,3 +21,11 @@ ItemConfig: this is more data-based on each item and also manages that propertie
 InventoryRemoteEvent: this is how the server sends data or talks to the client (this is a specific remote name)
 
 type Character: we declared that character is type model and a specific armor folder
+
+local armorRemovalMap: this map correlates each armorSubtype with each accessoryType (we will use this later to remove specific accessories due to armor subtypes)
+
+local function setAccessoriesByArmorSubtype: this loops through the character and uses the map in order to remove specific acccessories due to what armor subtype you equipt
+
+game.Player.PlayerAdder: when a player joins our game we go inside of the data of that player and then we give them the specific items based on a bool value called ReceivedStaterPack
+
+for_, uniqueItem in items: we are looping through the set of items and using datapaths to set the data for that specific person
